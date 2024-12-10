@@ -1,27 +1,23 @@
-name: Python Application
+name: Pylint
 
 on: [push]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        python-version: ["3.10"]
     steps:
-    - name: Check out code
-      uses: actions/checkout@v2
-
-    - name: Set up Python
-      uses: actions/setup-python@v2
+    - uses: actions/checkout@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
       with:
-        python-version: '3.10'  # 使用您需要的 Python 版本
-
+        python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install openai==1.51.2  # 安裝指定版本的 OpenAI 套件
-        pip install -r requirements.txt  # 如果有其他依賴，這行也可以保留
-
-    - name: Run your code (if applicable)
+        pip install pylint
+    - name: Analysing the code with pylint
       run: |
-        python 'main.py'  # 替換為您的主程式名
+        pylint $(git ls-files '*.py')
