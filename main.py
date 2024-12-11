@@ -1,4 +1,5 @@
-# -*-123 coding: utf-8 -*-
+```python
+# -*- coding: utf-8 -*-
 import os
 import sys
 import aiohttp
@@ -18,12 +19,12 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Retrieve environment variables
-openai_api_key=.env("OPENAI_API_KEY")
-assistant_id=.env("ASSISTANT_ID")
-channel_secret=.env('ChannelSecret')
-channel_access_token=.env('ChannelAccessToken')
+openai_api_key = os.getenv("OPENAI_API_KEY")
+assistant_id = os.getenv("ASSISTANT_ID")
+channel_secret = os.getenv('ChannelSecret')
+channel_access_token = os.getenv('ChannelAccessToken')
 
-if not openai_key or not assistant_id:
+if not openai_api_key or not assistant_id:
     logger.error('OpenAI API keys are missing.')
     sys.exit(1)
 
@@ -57,7 +58,7 @@ async def call_openai_assistant_api(user_message):
     logger.info(f"Calling OpenAI with message: {user_message}")
 
     try:
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        client = OpenAI(api_key=openai_api_key)
 
         thread = client.beta.threads.create(
             messages=[{"role": "user", "content": f"{user_message}。請用中文回答。"}]
@@ -68,7 +69,7 @@ async def call_openai_assistant_api(user_message):
 
         messages = list(client.beta.threads.messages.list(thread_id=thread.id, run_id=run.id))
         message_content = messages[0].content[0].text
-        
+
         # Process annotations if any
         annotations = message_content.annotations
         citations = []
