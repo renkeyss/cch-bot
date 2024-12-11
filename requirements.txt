@@ -1,7 +1,7 @@
 line-bot-sdk==3.5.0
 fastapi
 uvicorn[standard]
-openai==1.51.2
+openai==0.28.1
 python-dotenv
 aiohttp
 pinecone[grpc]
