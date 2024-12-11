@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Retrieve environment variables
-OPENAI_API_KEY = .env("OPENAI_API_KEY")
+openai_api_key = .env("OPENAI_API_KEY")
 assistant_id = .env("ASSISTANT_ID")
 channel_secret = .env('ChannelSecret')
 channel_access_token = .env('ChannelAccessToken')
