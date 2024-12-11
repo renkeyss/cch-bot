@@ -57,7 +57,7 @@ async def call_openai_assistant_api(user_message):
     logger.info(f"Calling OpenAI with message: {user_message}")
 
     try:
-        client = OpenAI(api_key=openai_key)
+        client = OpenAI(api_key=OPENAI_API_KEY)
 
         thread = client.beta.threads.create(
             messages=[{"role": "user", "content": f"{user_message}。請用中文回答。"}]
