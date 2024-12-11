@@ -3,14 +3,17 @@ import os
 import sys
 import aiohttp
 import logging
+import traceback
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, HTTPException
 from linebot import AsyncLineBotApi, WebhookParser
 from linebot.aiohttp_async_http_client import AiohttpAsyncHttpClient
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.exceptions import InvalidSignatureError
 from dotenv import load_dotenv
 from openai import OpenAIError, OpenAI
 
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -23,6 +26,7 @@ assistant_id = os.getenv("ASSISTANT_ID")
 channel_secret = os.getenv('ChannelSecret')
 channel_access_token = os.getenv('ChannelAccessToken')
 
+# Check environment variables
 if not openai_api_key or not assistant_id:
     logger.error('OpenAI API keys are missing.')
     sys.exit(1)
@@ -31,6 +35,7 @@ if not channel_secret or not channel_access_token:
     logger.error('LINE channel secret or token is missing.')
     sys.exit(1)
 
+# Initialize FastAPI
 app = FastAPI()
 session = aiohttp.ClientSession()
 
@@ -42,17 +47,20 @@ parser = WebhookParser(channel_secret)
 user_message_counts = {}
 USER_DAILY_LIMIT = 10
 
+# Introduction message
 introduction_message = (
     "我是 彰化基督教醫院 內分泌暨新陳代謝科 小助理，..."
     "但基本上我是由 OPENAI 大型語言模型訓練..."
 )
 
+# Reset user daily message count
 def reset_user_count(user_id):
     user_message_counts[user_id] = {
         'count': 0,
         'reset_time': datetime.now() + timedelta(days=1)
     }
 
+# Call OpenAI Assistant API
 async def call_openai_assistant_api(user_message):
     logger.info(f"Calling OpenAI with message: {user_message}")
 
@@ -85,9 +93,10 @@ async def call_openai_assistant_api(user_message):
         return "抱歉，我無法處理您的請求，請稍後再試。"
 
     except Exception as e:
-        logger.error(f"Unknown error occurred when calling OpenAI Assistant: {e}")
+        logger.error(f"Unknown error occurred: {e} - {traceback.format_exc()}")
         return "系統出現錯誤，請稍後再試。"
 
+# Handle webhook callback
 @app.post("/callback")
 async def handle_callback(request: Request):
     signature = request.headers.get('X-Line-Signature', None)
