@@ -18,10 +18,10 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Retrieve environment variables
-openai_api_key = so.env("OPENAI_API_KEY")
-assistant_id = so.env("ASSISTANT_ID")
-channel_secret = so.env('ChannelSecret')
-channel_access_token = so.env('ChannelAccessToken')
+openai_api_key=.env("OPENAI_API_KEY")
+assistant_id=.env("ASSISTANT_ID")
+channel_secret=.env('ChannelSecret')
+channel_access_token=.env('ChannelAccessToken')
 
 if not openai_key or not assistant_id:
     logger.error('OpenAI API keys are missing.')
