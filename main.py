@@ -1,26 +1,51 @@
-# -*- coding: utf-8 -*-
-from openai import OpenAI
+# -*-123 coding: utf-8 -*-
 import os
 import sys
 import aiohttp
+import logging
 from datetime import datetime, timedelta
-from fastapi import Request, FastAPI, HTTPException
+from fastapi import FastAPI, Request, HTTPException
 from linebot import AsyncLineBotApi, WebhookParser
 from linebot.aiohttp_async_http_client import AiohttpAsyncHttpClient
-from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
-from dotenv import load_dotenv, find_dotenv
-import logging
-from openai import OpenAIError
+from dotenv import load_dotenv
+from openai import OpenAIError, OpenAI
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-_ = load_dotenv(find_dotenv())
+# Load environment variables
+load_dotenv()
+
+# Retrieve environment variables
+openai_key = os.getenv("OPENAI_KEY")
+assistant_id = os.getenv("ASSISTANT_ID")
+channel_secret = os.getenv('ChannelSecret')
+channel_access_token = os.getenv('ChannelAccessToken')
+
+if not openai_key or not assistant_id:
+    logger.error('OpenAI API keys are missing.')
+    sys.exit(1)
+
+if not channel_secret or not channel_access_token:
+    logger.error('LINE channel secret or token is missing.')
+    sys.exit(1)
+
+app = FastAPI()
+session = aiohttp.ClientSession()
+
+# Setup LINE bot API
+async_http_client = AiohttpAsyncHttpClient(session)
+line_bot_api = AsyncLineBotApi(channel_access_token, async_http_client)
+parser = WebhookParser(channel_secret)
 
 user_message_counts = {}
-
 USER_DAILY_LIMIT = 10
+
+introduction_message = (
+    "我是 彰化基督教醫院 內分泌暨新陳代謝科 小助理，..."
+    "但基本上我是由 OPENAI 大型語言模型訓練..."
+)
 
 def reset_user_count(user_id):
     user_message_counts[user_id] = {
@@ -29,26 +54,22 @@ def reset_user_count(user_id):
     }
 
 async def call_openai_assistant_api(user_message):
-    logger.info(f"調用 OpenAI，消息: {user_message}")
+    logger.info(f"Calling OpenAI with message: {user_message}")
 
     try:
-        client = OpenAI(api_key=os.getenv("OPENAI_KEY"))
+        client = OpenAI(api_key=openai_key)
 
         thread = client.beta.threads.create(
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"{user_message}。請用中文回答。",
-                }
-            ]
+            messages=[{"role": "user", "content": f"{user_message}。請用中文回答。"}]
         )
         run = client.beta.threads.runs.create_and_poll(
-            thread_id=thread.id, assistant_id=os.getenv("ASSISTANT_ID")
+            thread_id=thread.id, assistant_id=assistant_id
         )
 
         messages = list(client.beta.threads.messages.list(thread_id=thread.id, run_id=run.id))
-
         message_content = messages[0].content[0].text
+        
+        # Process annotations if any
         annotations = message_content.annotations
         citations = []
         for index, annotation in enumerate(annotations):
@@ -60,46 +81,28 @@ async def call_openai_assistant_api(user_message):
         return message_content.value
 
     except OpenAIError as e:
-        logger.error(f"OpenAI API 錯誤: {e}")
+        logger.error(f"OpenAI API error: {e}")
         return "抱歉，我無法處理您的請求，請稍後再試。"
 
     except Exception as e:
-        logger.error(f"調用 OpenAI 助手時出現未知錯誤: {e}")
+        logger.error(f"Unknown error occurred when calling OpenAI Assistant: {e}")
         return "系統出現錯誤，請稍後再試。"
-
-channel_secret = os.getenv('ChannelSecret', None)
-channel_access_token = os.getenv('ChannelAccessToken', None)
-if channel_secret is None:
-    logger.error('Specify LINE_CHANNEL_SECRET as environment variable.')
-    sys.exit(1)
-if channel_access_token is None:
-    logger.error('Specify LINE_CHANNEL_ACCESS_TOKEN as environment variable.')
-    sys.exit(1)
-
-app = FastAPI()
-session = aiohttp.ClientSession()
-async_http_client = AiohttpAsyncHttpClient(session)
-line_bot_api = AsyncLineBotApi(channel_access_token, async_http_client)
-parser = WebhookParser(channel_secret)
-
-introduction_message = (
-    "我是 彰化基督教醫院 內分泌暨新陳代謝科 小助理，如果您有任何關於：糖尿病、高血壓、甲狀腺的相關問題，您可以向我詢問。"
-    "但基本上我是由 OPENAI 大型語言模型訓練，所以當您發現我回覆的答案有誤時，建議您要向您的醫療團隊做進一步的諮詢，謝謝！"
-)
 
 @app.post("/callback")
 async def handle_callback(request: Request):
-    signature = request.headers.get('X-Line-Signature')
+    signature = request.headers.get('X-Line-Signature', None)
+    if not signature:
+        logger.error("Missing X-Line-Signature header")
+        raise HTTPException(status_code=400, detail="Signature missing")
 
-    # get request body as text
     body = await request.body()
-    logger.info(f"Request body: {body.decode()}")
     body = body.decode()
+    logger.info(f"Request body: {body}")
 
     try:
         events = parser.parse(body, signature)
     except InvalidSignatureError:
-        logger.error("Invalid signature")
+        logger.error("Invalid signature error")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     for event in events:
@@ -120,7 +123,7 @@ async def handle_callback(request: Request):
             logger.info(f"User {user_id} exceeded daily limit")
             await line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="您好：您的問題似乎相當多元，但為了讓有限的資源可以讓所有人共享，所以請恕我今天無法再提供回覆，您可明天繼續再次使用本服務，若有急迫性的問題需要瞭解，歡迎致電 04-7238595 分機3239 我們將有專人為您服務，謝謝。")
+                TextSendMessage(text="您好：您的問題...")
             )
             continue
 
