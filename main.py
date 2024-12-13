@@ -1,83 +1,55 @@
 # -*- coding: utf-8 -*-
+from openai import OpenAI
 import os
 import sys
 import aiohttp
-import logging
-import traceback
 from datetime import datetime, timedelta
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import Request, FastAPI, HTTPException
 from linebot import AsyncLineBotApi, WebhookParser
 from linebot.aiohttp_async_http_client import AiohttpAsyncHttpClient
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from linebot.exceptions import InvalidSignatureError
-from dotenv import load_dotenv
-from openai import OpenAIError, OpenAI
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from dotenv import load_dotenv, find_dotenv
+import logging
+from openai import OpenAIError
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load environment variables
-load_dotenv()
-
-# Retrieve environment variables
-openai_api_key = os.getenv("OPENAI_API_KEY")
-assistant_id = os.getenv("ASSISTANT_ID")
-channel_secret = os.getenv('ChannelSecret')
-channel_access_token = os.getenv('ChannelAccessToken')
-
-# Check environment variables
-if not openai_api_key or not assistant_id:
-    logger.error('OpenAI API keys are missing.')
-    sys.exit(1)
-
-if not channel_secret or not channel_access_token:
-    logger.error('LINE channel secret or token is missing.')
-    sys.exit(1)
-
-# Initialize FastAPI
-app = FastAPI()
-session = aiohttp.ClientSession()
-
-# Setup LINE bot API
-async_http_client = AiohttpAsyncHttpClient(session)
-line_bot_api = AsyncLineBotApi(channel_access_token, async_http_client)
-parser = WebhookParser(channel_secret)
+_ = load_dotenv(find_dotenv())
 
 user_message_counts = {}
+
 USER_DAILY_LIMIT = 10
 
-# Introduction message
-introduction_message = (
-    "我是 彰化基督教醫院 內分泌暨新陳代謝科 小助理，..."
-    "但基本上我是由 OPENAI 大型語言模型訓練..."
-)
-
-# Reset user daily message count
 def reset_user_count(user_id):
     user_message_counts[user_id] = {
         'count': 0,
         'reset_time': datetime.now() + timedelta(days=1)
     }
 
-# Call OpenAI Assistant API
 async def call_openai_assistant_api(user_message):
-    logger.info(f"Calling OpenAI with message: {user_message}")
+
+    logger.info(f"調用 OpenAI，消息: {user_message}")
 
     try:
-        client = OpenAI(api_key=openai_api_key)
+        client = OpenAI(api_key=os.getenv("OPENAI_KEY"))
 
         thread = client.beta.threads.create(
-            messages=[{"role": "user", "content": f"{user_message}。請用中文回答。"}]
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"{user_message}。請用中文回答。",
+                }
+            ]
         )
         run = client.beta.threads.runs.create_and_poll(
-            thread_id=thread.id, assistant_id=assistant_id
+            thread_id=thread.id, assistant_id=os.getenv("ASSISTANT_ID")
         )
 
         messages = list(client.beta.threads.messages.list(thread_id=thread.id, run_id=run.id))
-        message_content = messages[0].content[0].text
 
-        # Process annotations if any
+        message_content = messages[0].content[0].text
         annotations = message_content.annotations
         citations = []
         for index, annotation in enumerate(annotations):
@@ -89,29 +61,45 @@ async def call_openai_assistant_api(user_message):
         return message_content.value
 
     except OpenAIError as e:
-        logger.error(f"OpenAI API error: {e}")
-        return "抱歉，我無法處理您的請求，請稍後再試。"
+            logger.error(f"OpenAI API 錯誤: {e}")
+            return "抱歉，我無法處理您的請求，請稍後再試。"
 
     except Exception as e:
-        logger.error(f"Unknown error occurred: {e} - {traceback.format_exc()}")
+        logger.error(f"調用 OpenAI 助手時出現未知錯誤: {e}")
         return "系統出現錯誤，請稍後再試。"
 
-# Handle webhook callback
+channel_secret = os.getenv('ChannelSecret', None)
+channel_access_token = os.getenv('ChannelAccessToken', None)
+if channel_secret is None:
+    logger.error('Specify LINE_CHANNEL_SECRET as environment variable.')
+    sys.exit(1)
+if channel_access_token is None:
+    logger.error('Specify LINE_CHANNEL_ACCESS_TOKEN as environment variable.')
+    sys.exit(1)
+
+app = FastAPI()
+session = aiohttp.ClientSession()
+async_http_client = AiohttpAsyncHttpClient(session)
+line_bot_api = AsyncLineBotApi(channel_access_token, async_http_client)
+parser = WebhookParser(channel_secret)
+
+introduction_message = (
+    "我是您的小助理，很高興為您服務。"
+)
+
 @app.post("/callback")
 async def handle_callback(request: Request):
-    signature = request.headers.get('X-Line-Signature', None)
-    if not signature:
-        logger.error("Missing X-Line-Signature header")
-        raise HTTPException(status_code=400, detail="Signature missing")
+    signature = request.headers.get('X-Line-Signature')
 
+    # get request body as text
     body = await request.body()
+    logger.info(f"Request body: {body.decode()}")
     body = body.decode()
-    logger.info(f"Request body: {body}")
 
     try:
         events = parser.parse(body, signature)
     except InvalidSignatureError:
-        logger.error("Invalid signature error")
+        logger.error("Invalid signature")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     for event in events:
@@ -123,16 +111,17 @@ async def handle_callback(request: Request):
 
         logger.info(f"Received message from user {user_id}: {user_message}")
 
-        if user_id not in user_message_counts:
-            reset_user_count(user_id)
-        elif datetime.now() >= user_message_counts[user_id]['reset_time']:
+        if user_id in user_message_counts:
+            if datetime.now() >= user_message_counts[user_id]['reset_time']:
+                reset_user_count(user_id)
+        else:
             reset_user_count(user_id)
 
         if user_message_counts[user_id]['count'] >= USER_DAILY_LIMIT:
             logger.info(f"User {user_id} exceeded daily limit")
             await line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="您好：您的問題...")
+                TextSendMessage(text="您今天的用量已經超過，請明天再詢問。")
             )
             continue
 
