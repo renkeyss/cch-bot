@@ -14,7 +14,7 @@ import logging
 from openai import OpenAIError
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(_name_)
 
 _ = load_dotenv(find_dotenv())
 
@@ -35,20 +35,20 @@ async def call_openai_assistant_api(user_message):
     try:
         client = OpenAI(api_key=os.getenv("OPENAI_KEY"))
 
-        thread = client.beta.threads.create(
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"{user_message}。請用中文回答。",
-                }
-            ]
+        thread = client.beta.threads.create()
+
+        message = client.beta.threads.messages.create(
+            thread_id=thread.id,
+            role="user",
+            content=f"{user_message}。請用中文回答。"
         )
+
         run = client.beta.threads.runs.create_and_poll(
-            thread_id=thread.id, assistant_id=os.getenv("ASSISTANT_ID")
+        thread_id=thread.id,
+        assistant_id=os.getenv("ASSISTANT_ID"),
         )
 
         messages = list(client.beta.threads.messages.list(thread_id=thread.id, run_id=run.id))
-
         message_content = messages[0].content[0].text
         annotations = message_content.annotations
         citations = []
@@ -66,7 +66,7 @@ async def call_openai_assistant_api(user_message):
 
     except Exception as e:
         logger.error(f"調用 OpenAI 助手時出現未知錯誤: {e}")
-        return "系統出現錯誤，請稍後再試-9。"
+        return "系統出現錯誤，請稍後再試-9998。"
 
 channel_secret = os.getenv('ChannelSecret', None)
 channel_access_token = os.getenv('ChannelAccessToken', None)
