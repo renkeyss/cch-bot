@@ -22,6 +22,15 @@ user_message_counts = {}
 
 USER_DAILY_LIMIT = 10
 
+
+print(os.getenv("ChannelSecret"))
+
+print(os.getenv("ChannelAccessToken"))
+
+print(os.getenv("OPENAI_KEY"))
+
+print(os.getenv("ASSISTANT_ID"))
+
 def reset_user_count(user_id):
     user_message_counts[user_id] = {
         'count': 0,
@@ -48,6 +57,8 @@ async def call_openai_assistant_api(user_message):
         assistant_id=os.getenv("ASSISTANT_ID"),
         )
 
+        print("run", run)
+
         messages = list(client.beta.threads.messages.list(thread_id=thread.id, run_id=run.id))
         message_content = messages[0].content[0].text
         annotations = message_content.annotations
@@ -66,7 +77,7 @@ async def call_openai_assistant_api(user_message):
 
     except Exception as e:
         logger.error(f"調用 OpenAI 助手時出現未知錯誤: {e}")
-        return "系統出現錯誤，請稍後再試-9998。"
+        return "系統出現錯誤，請稍後再試。"
 
 channel_secret = os.getenv('ChannelSecret', None)
 channel_access_token = os.getenv('ChannelAccessToken', None)
