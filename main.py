@@ -14,7 +14,7 @@ import logging
 from openai import OpenAIError
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__main__)
+logger = logging.getLogger(__name__)
 
 _ = load_dotenv(find_dotenv())
 
